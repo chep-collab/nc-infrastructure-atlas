@@ -6,6 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <style>
   :root{
     --navy:#0d1b3d;
@@ -49,6 +50,58 @@
   header .stats{display:flex;gap:16px;font-size:11px;color:#dfe4f0;}
   header .stats b{display:block;font-size:16px;color:#fff;font-weight:700;}
   #toggle-aside{display:none;background:transparent;border:1px solid #46508a;color:#fff;border-radius:6px;padding:6px 10px;font-size:12px;cursor:pointer;}
+
+  .status-badge{
+    background:rgba(255,255,255,.12);
+    border:1px solid rgba(255,255,255,.35);
+    color:#fff;
+    font-size:11px;
+    font-weight:600;
+    letter-spacing:.4px;
+    padding:6px 14px;
+    border-radius:999px;
+    white-space:nowrap;
+  }
+  .hdr-btn{
+    background:transparent;
+    border:1px solid #46508a;
+    color:#fff;
+    border-radius:6px;
+    padding:6px 12px;
+    font-size:12px;
+    font-weight:600;
+    cursor:pointer;
+    white-space:nowrap;
+  }
+  .hdr-btn:hover{background:rgba(255,255,255,.08);}
+
+  .map-toolbar{
+    position:absolute;top:14px;right:14px;z-index:900;
+    display:flex;gap:8px;
+  }
+  .tool-btn{
+    background:var(--navy);
+    color:#fff;
+    border:none;
+    border-radius:6px;
+    padding:8px 14px;
+    font-size:12px;
+    font-weight:600;
+    cursor:pointer;
+    box-shadow:0 2px 6px rgba(0,0,0,.15);
+    white-space:nowrap;
+  }
+  .tool-btn:hover{background:var(--navy-2);}
+
+  .app.presenter-mode aside{display:none;}
+  .app.presenter-mode header .stats,
+  .app.presenter-mode header .status-badge,
+  .app.presenter-mode #toggle-aside{display:none;}
+
+  @media (max-width:900px){
+    .status-badge{display:none;}
+    .map-toolbar{flex-wrap:wrap;justify-content:flex-end;max-width:160px;}
+  }
 
   .body{flex:1;display:flex;min-height:0;}
 
@@ -111,6 +164,8 @@
       <p>Roads · Railways · Ports · Pipeline Depots · Border Posts · Weighbridges</p>
     </div>
     <div style="display:flex;align-items:center;gap:14px;">
+      <span class="status-badge">PROTOTYPE · VIEW-ONLY</span>
+      <button id="reset-view" class="hdr-btn">Reset View</button>
       <button id="toggle-aside">☰ Layers</button>
       <div class="stats">
         <div><b id="stat-countries">0</b>countries</div>
@@ -125,7 +180,13 @@
       <input id="search" class="search-box" type="text" placeholder="Search a place or route...">
       <div id="layer-controls"></div>
     </aside>
-    <div id="map"></div>
+    <div id="map">
+      <div class="map-toolbar">
+        <button id="btn-export" class="tool-btn">⇓ Export</button>
+        <button id="btn-presenter" class="tool-btn">▦ Presenter View</button>
+        <button id="btn-fullscreen" class="tool-btn">⛶ Full Screen</button>
+      </div>
+    </div>
   </div>
 
   <footer>
@@ -140,11 +201,14 @@ const DATA = JSON.parse(document.getElementById('corridor-data').textContent);
 
 function cssVar(name){ return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
 
-const map = L.map('map', {zoomControl:true}).setView([-0.5, 30.8], 6);
+const INITIAL_CENTER = [-0.5, 30.8];
+const INITIAL_ZOOM = 6;
+const map = L.map('map', {zoomControl:true}).setView(INITIAL_CENTER, INITIAL_ZOOM);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   attribution: '&copy; OpenStreetMap contributors',
   maxZoom: 19
 }).addTo(map);
+L.control.scale({position: 'bottomright', imperial: false}).addTo(map);
 
 const legendEl = document.createElement('div');
 legendEl.className = 'map-legend';
@@ -459,6 +523,48 @@ document.getElementById('footer-summary').textContent =
 
 document.getElementById('toggle-aside').addEventListener('click', () => {
   document.getElementById('aside').classList.toggle('open');
+});
+
+/* ======================= Header / Toolbar controls ======================= */
+document.getElementById('reset-view').addEventListener('click', () => {
+  map.setView(INITIAL_CENTER, INITIAL_ZOOM);
+});
+
+document.getElementById('btn-presenter').addEventListener('click', (e) => {
+  const app = document.querySelector('.app');
+  app.classList.toggle('presenter-mode');
+  const on = app.classList.contains('presenter-mode');
+  e.target.textContent = on ? '▦ Exit Presenter' : '▦ Presenter View';
+  setTimeout(() => map.invalidateSize(), 250);
+});
+
+document.getElementById('btn-fullscreen').addEventListener('click', () => {
+  const el = document.documentElement;
+  if (!document.fullscreenElement) {
+    (el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen).call(el);
+  } else {
+    (document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen).call(document);
+  }
+});
+document.addEventListener('fullscreenchange', () => setTimeout(() => map.invalidateSize(), 200));
+
+document.getElementById('btn-export').addEventListener('click', async (e) => {
+  const btn = e.target;
+  const originalText = btn.textContent;
+  btn.textContent = 'Exporting…';
+  btn.disabled = true;
+  try {
+    const canvas = await html2canvas(document.getElementById('map'), {useCORS: true, allowTaint: true});
+    const link = document.createElement('a');
+    link.download = 'nc-infrastructure-atlas.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  } catch (err) {
+    alert('Export failed: ' + err.message);
+  } finally {
+    btn.textContent = originalText;
+    btn.disabled = false;
+  }
 });
 </script>
 </body>
