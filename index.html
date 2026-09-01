@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Northern Corridor Infrastructure Atlas</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<style>
+  :root{
+    --navy:#0d1b3d;
+    --navy-2:#132657;
+    --gold:#d4a017;
+    --paper:#f3f2ee;
+    --ink:#1c2230;
+    --muted:#5b6472;
+    --line:#e1dfd8;
+
+    --c-country:#c9cbd6;
+    --c-road-orig:#b0453f;
+    --c-road-add:#e08a3c;
+    --c-rail-sgr:#7a3fa0;
+    --c-rail-mgr:#2d7dd2;
+    --c-port-mar:#0f6d8c;
+    --c-port-inl:#2fa693;
+    --c-depot:#8b5fbf;
+    --c-wb:#c98a1f;
+    --c-capital:#0d1b3d;
+
+    --c-full:#1f8a5f;
+    --c-partial:#2d7dd2;
+    --c-progress:#d4a017;
+    --c-planned:#8b5fbf;
+    --c-non:#b0453f;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;font-family:'Segoe UI',system-ui,-apple-system,Arial,sans-serif;background:var(--paper);color:var(--ink);}
+  .app{display:flex;flex-direction:column;height:100%;}
+
+  header{
+    background:linear-gradient(180deg,var(--navy) 0%, var(--navy-2) 100%);
+    color:#fff;
+    padding:12px 20px;
+    border-bottom:3px solid var(--gold);
+    display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;
+  }
+  header .title-block h1{margin:0;font-size:17px;letter-spacing:.3px;font-weight:700;}
+  header .title-block p{margin:2px 0 0;font-size:11px;color:#c7cee0;letter-spacing:.4px;}
+  header .stats{display:flex;gap:16px;font-size:11px;color:#dfe4f0;}
+  header .stats b{display:block;font-size:16px;color:#fff;font-weight:700;}
+  #toggle-aside{display:none;background:transparent;border:1px solid #46508a;color:#fff;border-radius:6px;padding:6px 10px;font-size:12px;cursor:pointer;}
+
+  .status-badge{
+    background:rgba(255,255,255,.12);
+    border:1px solid rgba(255,255,255,.35);
+    color:#fff;
+    font-size:11px;
+    font-weight:600;
+    letter-spacing:.4px;
+    padding:6px 14px;
+    border-radius:999px;
+    white-space:nowrap;
+  }
+  .hdr-btn{
+    background:transparent;
+    border:1px solid #46508a;
+    color:#fff;
+    border-radius:6px;
+    padding:6px 12px;
+    font-size:12px;
+    font-weight:600;
+    cursor:pointer;
+    white-space:nowrap;
+  }
+  .hdr-btn:hover{background:rgba(255,255,255,.08);}
+
+  .map-toolbar{
+    position:absolute;top:14px;right:14px;z-index:900;
+    display:flex;gap:8px;
+  }
+  .tool-btn{
+    background:var(--navy);
+    color:#fff;
+    border:none;
+    border-radius:6px;
+    padding:8px 14px;
+    font-size:12px;
+    font-weight:600;
+    cursor:pointer;
+    box-shadow:0 2px 6px rgba(0,0,0,.15);
+    white-space:nowrap;
+  }
+  .tool-btn:hover{background:var(--navy-2);}
+
+  .app.presenter-mode aside{display:none;}
+  .app.presenter-mode header .stats,
+  .app.presenter-mode header .status-badge,
+  .app.presenter-mode #toggle-aside{display:none;}
+
+  @media (max-width:900px){
+    .status-badge{display:none;}
+    .map-toolbar{flex-wrap:wrap;justify-content:flex-end;max-width:160px;}
+  }
+
+  .body{flex:1;display:flex;min-height:0;}
+
+  aside{width:280px;background:#fff;border-right:1px solid var(--line);padding:14px 16px;overflow-y:auto;}
+  .search-box{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font-size:13px;margin-bottom:14px;}
+  .search-box:focus{outline:2px solid var(--gold);border-color:var(--gold);}
+
+  .section-label{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin:16px 0 6px;font-weight:700;}
+  .section-label:first-of-type{margin-top:0;}
+
+  .layer-block{border-bottom:1px solid var(--line);padding-bottom:8px;margin-bottom:4px;}
+  .layer-head{display:flex;align-items:center;gap:8px;padding:7px 4px;cursor:pointer;user-select:none;border-radius:6px;}
+  .layer-head:hover{background:var(--paper);}
+  .layer-head .swatch{width:14px;height:14px;border-radius:3px;flex:0 0 auto;}
+  .layer-head .swatch.round{border-radius:50%;}
+  .layer-head .swatch.line{height:3px;border-radius:2px;margin-top:5px;}
+  .layer-head span.name{font-size:13px;font-weight:600;flex:1;}
+  .layer-head input{margin:0;accent-color:var(--navy);width:15px;height:15px;}
+  .layer-head .count{font-size:10px;color:var(--muted);}
+
+  .sub-filters{padding-left:30px;display:flex;flex-direction:column;gap:4px;margin-top:2px;}
+  .sub-row{display:flex;align-items:center;gap:7px;font-size:12px;cursor:pointer;padding:2px 0;}
+  .sub-row .swatch{width:10px;height:10px;border-radius:50%;flex:0 0 auto;}
+  .sub-row input{margin:0;accent-color:var(--navy);}
+  .sub-row .cnt{margin-left:auto;color:var(--muted);font-size:10px;}
+
+  #map{flex:1;min-width:0;}
+
+  .leaflet-popup-content-wrapper{border-radius:8px;}
+  .popup h3{margin:0 0 6px;font-size:14px;color:var(--navy);}
+  .popup table{border-collapse:collapse;font-size:12px;}
+  .popup td{padding:2px 0;vertical-align:top;}
+  .popup td.k{color:var(--muted);padding-right:10px;white-space:nowrap;}
+  .popup .badge{display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;color:#fff;margin-top:4px;}
+
+  .map-legend{
+    position:absolute;bottom:14px;right:14px;background:rgba(255,255,255,.96);
+    border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:11px;
+    max-width:200px;box-shadow:0 2px 10px rgba(0,0,0,.08);z-index:800;
+  }
+  .map-legend h4{margin:0 0 6px;font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);}
+  .legend-row{display:flex;align-items:center;gap:6px;margin-bottom:3px;}
+  .legend-row .sw{width:10px;height:10px;border-radius:50%;flex:0 0 auto;}
+
+  footer{background:var(--navy);color:#aeb6c9;font-size:11px;padding:6px 20px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px;}
+
+  @media (max-width:760px){
+    aside{position:absolute;z-index:1000;height:calc(100% - 122px);left:0;top:112px;transform:translateX(-100%);transition:transform .2s ease;box-shadow:2px 0 10px rgba(0,0,0,.15);width:260px;}
+    aside.open{transform:translateX(0);}
+    #toggle-aside{display:inline-block;}
+    .map-legend{display:none;}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="title-block">
+      <h1>Northern &amp; Central Corridor — Infrastructure Atlas</h1>
+      <p>Roads · Railways · Ports · Pipeline Depots · Border Posts · Weighbridges</p>
+    </div>
+    <div style="display:flex;align-items:center;gap:14px;">
+      <span class="status-badge">PROTOTYPE · VIEW-ONLY</span>
+      <button id="reset-view" class="hdr-btn">Reset View</button>
+      <button id="toggle-aside">☰ Layers</button>
+      <div class="stats">
+        <div><b id="stat-countries">0</b>countries</div>
+        <div><b id="stat-borders">0</b>border posts</div>
+        <div><b id="stat-ports">0</b>ports</div>
+      </div>
+    </div>
+  </header>
+
+  <div class="body">
+    <aside id="aside">
+      <input id="search" class="search-box" type="text" placeholder="Search a place or route...">
+      <div id="layer-controls"></div>
+    </aside>
+    <div id="map">
+      <div class="map-toolbar">
+        <button id="btn-export" class="tool-btn">⇓ Export</button>
+        <button id="btn-presenter" class="tool-btn">▦ Presenter View</button>
+        <button id="btn-fullscreen" class="tool-btn">⛶ Full Screen</button>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <span id="footer-summary">Loading corridor dataset…</span>
+    <span>Click any feature for details</span>
+  </footer>
+</div>
+
+<script>
+let DATA = null;
+
+fetch('corridor_data.json')
+  .then(res => res.json())
+  .then(data => {
+    DATA = data;
+    initMap();
+  })
+  .catch(err => {
+    document.getElementById('map').innerHTML =
+      '<p style="padding:20px;color:#b0453f;">Could not load corridor_data.json — ' + err.message + '</p>';
+  });
+
+function initMap() {
+
+function cssVar(name){ return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+const INITIAL_CENTER = [-0.5, 30.8];
+const INITIAL_ZOOM = 6;
+const map = L.map('map', {zoomControl:true}).setView(INITIAL_CENTER, INITIAL_ZOOM);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '&copy; OpenStreetMap contributors',
+  maxZoom: 19
+}).addTo(map);
+L.control.scale({position: 'bottomright', imperial: false}).addTo(map);
+
+const legendEl = document.createElement('div');
+legendEl.className = 'map-legend';
+legendEl.innerHTML = '<h4>Legend</h4><div id="legend-body">Toggle layers to build a legend.</div>';
+document.getElementById('map').style.position = 'relative';
+document.getElementById('map').appendChild(legendEl);
+
+const activeLegendEntries = new Map(); // key -> {label, color}
+function refreshLegend(){
+  const body = document.getElementById('legend-body');
+  if(activeLegendEntries.size === 0){
+    body.innerHTML = 'Toggle layers to build a legend.';
+    return;
+  }
+  body.innerHTML = [...activeLegendEntries.values()].map(e =>
+    `<div class="legend-row"><span class="sw" style="background:${e.color}"></span>${e.label}</div>`
+  ).join('');
+}
+function setLegend(key, label, color){ activeLegendEntries.set(key, {label, color}); refreshLegend(); }
+function clearLegend(key){ activeLegendEntries.delete(key); refreshLegend(); }
+
+// searchable index: {marker/layer, name, tokens}
+const searchIndex = [];
+
+const layerControlsEl = document.getElementById('layer-controls');
+function addSection(label){
+  const el = document.createElement('div');
+  el.className = 'section-label';
+  el.textContent = label;
+  layerControlsEl.appendChild(el);
+}
+
+// generic helper to build a layer block with an on/off master + optional sub-filters
+function buildLayerBlock({id, name, swatchClass, color, count, group, subFilters}){
+  const block = document.createElement('div');
+  block.className = 'layer-block';
+
+  const head = document.createElement('label');
+  head.className = 'layer-head';
+  head.innerHTML = `
+    <input type="checkbox" checked data-layer="${id}">
+    <span class="swatch ${swatchClass}" style="background:${color}"></span>
+    <span class="name">${name}</span>
+    <span class="count">${count}</span>
+  `;
+  block.appendChild(head);
+
+  head.querySelector('input').addEventListener('change', e => {
+    if(e.target.checked){
+      map.addLayer(group);
+      if(subFilters) subFilters.forEach(sf => { if(sf.active) setLegend(sf.key, sf.label, sf.color); });
+      else setLegend(id, name, color);
+    } else {
+      map.removeLayer(group);
+      if(subFilters) subFilters.forEach(sf => clearLegend(sf.key));
+      else clearLegend(id);
+    }
+  });
+
+  if(subFilters){
+    const subEl = document.createElement('div');
+    subEl.className = 'sub-filters';
+    subFilters.forEach(sf => {
+      const row = document.createElement('label');
+      row.className = 'sub-row';
+      row.innerHTML = `<input type="checkbox" checked data-sub="${sf.key}"><span class="swatch" style="background:${sf.color}"></span><span>${sf.label}</span><span class="cnt">${sf.count}</span>`;
+      row.querySelector('input').addEventListener('change', e => {
+        sf.active = e.target.checked;
+        sf.onToggle(e.target.checked);
+        if(e.target.checked) setLegend(sf.key, sf.label, sf.color);
+        else clearLegend(sf.key);
+      });
+      subEl.appendChild(row);
+    });
+    block.appendChild(subEl);
+  }
+
+  layerControlsEl.appendChild(block);
+  // init legend
+  if(subFilters) subFilters.forEach(sf => setLegend(sf.key, sf.label, sf.color));
+  else setLegend(id, name, color);
+
+  return block;
+}
+
+/* ======================= BASE & CONTEXT ======================= */
+addSection('Base & Environmental Context');
+
+const countryLayer = L.geoJSON(DATA.country, {
+  style: { color: '#9aa0b4', weight: 1, fillColor: cssVar('--c-country'), fillOpacity: 0.25 },
+  onEachFeature: (f, layer) => {
+    layer.bindPopup(`<div class="popup"><h3>${f.properties.CNTRY_NAME || f.properties.ADM0_REF}</h3></div>`);
+  }
+}).addTo(map);
+buildLayerBlock({id:'country', name:'Member Countries', swatchClass:'', color:cssVar('--c-country'),
+  count: DATA.country.features.length, group: countryLayer});
+
+/* ======================= CORE TRANSPORT NETWORKS ======================= */
+addSection('Core Transport Networks');
+
+// --- Roads ---
+const roadGroups = { Original: L.layerGroup(), Added: L.layerGroup() };
+DATA.roads.features.forEach(f => {
+  const status = f.properties.STATUS || 'Original';
+  const color = status === 'Added' ? cssVar('--c-road-add') : cssVar('--c-road-orig');
+  const layer = L.geoJSON(f, { style: { color, weight: 3, opacity: 0.85 } });
+  layer.bindPopup(`<div class="popup"><h3>${f.properties.NAME || 'Road segment'}</h3>
+    <table>
+      <tr><td class="k">Country</td><td>${f.properties.COUNTRY || '—'}</td></tr>
+      <tr><td class="k">Status</td><td>${status}</td></tr>
+      <tr><td class="k">Distance</td><td>${f.properties.DISTA_KM ? f.properties.DISTA_KM + ' km' : '—'}</td></tr>
+    </table></div>`);
+  (roadGroups[status] || roadGroups.Original).addLayer(layer);
+  searchIndex.push({name: f.properties.NAME || '', layer, group: (roadGroups[status] || roadGroups.Original)});
+});
+const roadsMaster = L.layerGroup([roadGroups.Original, roadGroups.Added]).addTo(map);
+buildLayerBlock({
+  id:'roads', name:'NC Roads', swatchClass:'line', color:cssVar('--c-road-orig'),
+  count: DATA.roads.features.length, group: roadsMaster,
+  subFilters: [
+    {key:'road-orig', label:'Original', color:cssVar('--c-road-orig'), active:true,
+      count: DATA.roads.features.filter(f=>(f.properties.STATUS||'Original')==='Original').length,
+      onToggle:(on)=> on ? map.addLayer(roadGroups.Original) : map.removeLayer(roadGroups.Original)},
+    {key:'road-add', label:'Added', color:cssVar('--c-road-add'), active:true,
+      count: DATA.roads.features.filter(f=>f.properties.STATUS==='Added').length,
+      onToggle:(on)=> on ? map.addLayer(roadGroups.Added) : map.removeLayer(roadGroups.Added)}
+  ]
+});
+
+// --- Railways ---
+const railGroups = { sgr_impl:L.layerGroup(), sgr_plan:L.layerGroup(), mgr_impl:L.layerGroup(), mgr_plan:L.layerGroup() };
+DATA.rail.features.forEach(f => {
+  const isSgr = (f.properties.RailType||'').includes('Standard');
+  const isPlanned = f.properties.Remarks === 'Planned';
+  const color = isSgr ? cssVar('--c-rail-sgr') : cssVar('--c-rail-mgr');
+  const dash = isPlanned ? '6,6' : null;
+  const layer = L.geoJSON(f, { style: { color, weight: 3, opacity: 0.9, dashArray: dash } });
+  layer.bindPopup(`<div class="popup"><h3>${f.properties.RailName || 'Rail line'}</h3>
+    <table>
+      <tr><td class="k">Country</td><td>${f.properties.Country || '—'}</td></tr>
+      <tr><td class="k">Type</td><td>${f.properties.RailType || '—'}</td></tr>
+      <tr><td class="k">Route</td><td>${f.properties.RailOrign || '?'} → ${f.properties.RailDest || '?'}</td></tr>
+      <tr><td class="k">Length</td><td>${f.properties.Length_KM ? f.properties.Length_KM.toFixed(1) + ' km' : '—'}</td></tr>
+      <tr><td class="k">Status</td><td>${f.properties.Remarks || '—'}</td></tr>
+    </table></div>`);
+  const key = (isSgr?'sgr':'mgr') + '_' + (isPlanned?'plan':'impl');
+  railGroups[key].addLayer(layer);
+  searchIndex.push({name: f.properties.RailName || '', layer, group: railGroups[key]});
+});
+const railMaster = L.layerGroup(Object.values(railGroups)).addTo(map);
+buildLayerBlock({
+  id:'rail', name:'NCTTCA Railways', swatchClass:'line', color:cssVar('--c-rail-sgr'),
+  count: DATA.rail.features.length, group: railMaster,
+  subFilters: [
+    {key:'rail-sgr', label:'Standard Gauge (SGR)', color:cssVar('--c-rail-sgr'), active:true,
+      count: DATA.rail.features.filter(f=>(f.properties.RailType||'').includes('Standard')).length,
+      onToggle:(on)=>{ on ? map.addLayer(railGroups.sgr_impl) : map.removeLayer(railGroups.sgr_impl); on ? map.addLayer(railGroups.sgr_plan) : map.removeLayer(railGroups.sgr_plan); }},
+    {key:'rail-mgr', label:'Meter Gauge (MGR)', color:cssVar('--c-rail-mgr'), active:true,
+      count: DATA.rail.features.filter(f=>(f.properties.RailType||'').includes('Meter')).length,
+      onToggle:(on)=>{ on ? map.addLayer(railGroups.mgr_impl) : map.removeLayer(railGroups.mgr_impl); on ? map.addLayer(railGroups.mgr_plan) : map.removeLayer(railGroups.mgr_plan); }}
+  ]
+});
+
+// --- Pipeline Depots ---
+const depotLayer = L.layerGroup();
+DATA.depots.features.forEach(f => {
+  const c = f.geometry.coordinates;
+  const m = L.circleMarker([c[1], c[0]], { radius:7, fillColor: cssVar('--c-depot'), color:'#fff', weight:2, fillOpacity:0.95 })
+    .bindPopup(`<div class="popup"><h3>${f.properties.NAME}</h3><span class="badge" style="background:${cssVar('--c-depot')}">Pipeline Depot</span></div>`);
+  depotLayer.addLayer(m);
+  searchIndex.push({name: f.properties.NAME || '', layer:m, group: depotLayer});
+});
+depotLayer.addTo(map);
+buildLayerBlock({id:'depots', name:'Pipeline Depots', swatchClass:'round', color:cssVar('--c-depot'),
+  count: DATA.depots.features.length, group: depotLayer});
+
+/* ======================= TRADE & LOGISTICS FACILITIES ======================= */
+addSection('Trade & Logistics Facilities');
+
+// --- Ports ---
+const portGroups = { Maritime: L.layerGroup(), Inland: L.layerGroup() };
+DATA.ports.features.forEach(f => {
+  const isMaritime = f.properties.Printing === 'Maritime Port';
+  const color = isMaritime ? cssVar('--c-port-mar') : cssVar('--c-port-inl');
+  const c = f.geometry.coordinates;
+  const m = L.circleMarker([c[1], c[0]], { radius: isMaritime?9:6, fillColor: color, color:'#fff', weight:2, fillOpacity:0.95 })
+    .bindPopup(`<div class="popup"><h3>${f.properties.NAME}</h3>
+      <table>
+        <tr><td class="k">Country</td><td>${f.properties.COUNTRY||'—'}</td></tr>
+        <tr><td class="k">Category</td><td>${f.properties.CATEGORY||'—'}</td></tr>
+        <tr><td class="k">Section</td><td>${f.properties.SECTION_NA||'—'}</td></tr>
+      </table>
+      <span class="badge" style="background:${color}">${f.properties.Printing || 'Port'}</span></div>`);
+  (isMaritime ? portGroups.Maritime : portGroups.Inland).addLayer(m);
+  searchIndex.push({name: f.properties.NAME || '', layer:m, group: (isMaritime?portGroups.Maritime:portGroups.Inland)});
+});
+const portsMaster = L.layerGroup([portGroups.Maritime, portGroups.Inland]).addTo(map);
+buildLayerBlock({
+  id:'ports', name:'Ports', swatchClass:'round', color:cssVar('--c-port-mar'),
+  count: DATA.ports.features.length, group: portsMaster,
+  subFilters: [
+    {key:'port-mar', label:'Maritime', color:cssVar('--c-port-mar'), active:true,
+      count: DATA.ports.features.filter(f=>f.properties.Printing==='Maritime Port').length,
+      onToggle:(on)=> on ? map.addLayer(portGroups.Maritime) : map.removeLayer(portGroups.Maritime)},
+    {key:'port-inl', label:'Inland / Lake / River', color:cssVar('--c-port-inl'), active:true,
+      count: DATA.ports.features.filter(f=>f.properties.Printing!=='Maritime Port').length,
+      onToggle:(on)=> on ? map.addLayer(portGroups.Inland) : map.removeLayer(portGroups.Inland)}
+  ]
+});
+
+// --- Border posts ---
+const borderCatColors = {
+  "Fully Operational (OSBP on both sides": cssVar('--c-full'),
+  "Partial / Single Side (OSBP on one side)": cssVar('--c-partial'),
+  "In Progress (Under construction)": cssVar('--c-progress'),
+  "Planned": cssVar('--c-planned'),
+  "Non-OSBP": cssVar('--c-non')
+};
+const borderCatShort = {
+  "Fully Operational (OSBP on both sides": "Fully Operational",
+  "Partial / Single Side (OSBP on one side)": "Partial / Single Side",
+  "In Progress (Under construction)": "In Progress",
+  "Planned": "Planned",
+  "Non-OSBP": "Non-OSBP"
+};
+const borderGroups = {};
+Object.keys(borderCatColors).forEach(k => borderGroups[k] = L.layerGroup());
+DATA.borders.features.forEach(f => {
+  const cat = f.properties['Category'];
+  const color = borderCatColors[cat] || '#999';
+  const c = f.geometry.coordinates;
+  const m = L.circleMarker([c[1], c[0]], { radius:7, fillColor: color, color:'#fff', weight:2, fillOpacity:0.95 })
+    .bindPopup(`<div class="popup"><h3>${f.properties['Border Pos']}</h3>
+      <table>
+        <tr><td class="k">Country pair</td><td>${f.properties['Country Pa']||'—'}</td></tr>
+        <tr><td class="k">OSBP status</td><td>${f.properties['OSBP Statu']||'—'}</td></tr>
+        <tr><td class="k">Facility type</td><td>${f.properties['Type[1]']||'—'}</td></tr>
+      </table>
+      <span class="badge" style="background:${color}">${borderCatShort[cat]||cat}</span></div>`);
+  (borderGroups[cat] || (borderGroups[cat]=L.layerGroup())).addLayer(m);
+  searchIndex.push({name: (f.properties['Border Pos']||'') + ' ' + (f.properties['Country Pa']||''), layer:m, group: borderGroups[cat]});
+});
+const bordersMaster = L.layerGroup(Object.values(borderGroups)).addTo(map);
+buildLayerBlock({
+  id:'borders', name:'Border Posts by OSBP Status', swatchClass:'round', color:cssVar('--c-full'),
+  count: DATA.borders.features.length, group: bordersMaster,
+  subFilters: Object.keys(borderCatColors).map(cat => ({
+    key:'border-'+borderCatShort[cat], label:borderCatShort[cat], color:borderCatColors[cat], active:true,
+    count: DATA.borders.features.filter(f=>f.properties['Category']===cat).length,
+    onToggle:(on)=> on ? map.addLayer(borderGroups[cat]) : map.removeLayer(borderGroups[cat])
+  }))
+});
+
+// --- Weighbridges ---
+const wbLayer = L.layerGroup();
+DATA.weighbridges.features.forEach(f => {
+  const c = f.geometry.coordinates;
+  const m = L.circleMarker([c[1], c[0]], { radius:6, fillColor: cssVar('--c-wb'), color:'#fff', weight:2, fillOpacity:0.95 })
+    .bindPopup(`<div class="popup"><h3>${f.properties.WBName || f.properties.NAME}</h3>
+      <table>
+        <tr><td class="k">Country</td><td>${f.properties.COUNTRY||'—'}</td></tr>
+        <tr><td class="k">Section</td><td>${f.properties.SECTION_NA||'—'}</td></tr>
+      </table></div>`);
+  wbLayer.addLayer(m);
+  searchIndex.push({name: (f.properties.WBName||f.properties.NAME||''), layer:m, group: wbLayer});
+});
+buildLayerBlock({id:'weighbridges', name:'Weighbridges', swatchClass:'round', color:cssVar('--c-wb'),
+  count: DATA.weighbridges.features.length, group: wbLayer});
+
+/* ======================= CAPITALS ======================= */
+addSection('Reference Points');
+const capitalLayer = L.layerGroup();
+DATA.capitals.features.forEach(f => {
+  const c = f.geometry.coordinates;
+  const m = L.circleMarker([c[1], c[0]], { radius:5, fillColor: cssVar('--c-capital'), color:'#fff', weight:2, fillOpacity:0.95 })
+    .bindPopup(`<div class="popup"><h3>${f.properties.ADM_1 || f.properties.TRANSIT_TO}</h3>
+      <table><tr><td class="k">Country</td><td>${f.properties.COUNTRY||'—'}</td></tr></table>
+      <span class="badge" style="background:${cssVar('--c-capital')}">Capital City</span></div>`);
+  capitalLayer.addLayer(m);
+  searchIndex.push({name: (f.properties.ADM_1||f.properties.TRANSIT_TO||'') + ' ' + (f.properties.COUNTRY||''), layer:m, group: capitalLayer});
+});
+buildLayerBlock({id:'capitals', name:'Capital Cities', swatchClass:'round', color:cssVar('--c-capital'),
+  count: DATA.capitals.features.length, group: capitalLayer});
+
+/* ======================= Search ======================= */
+document.getElementById('search').addEventListener('input', e => {
+  const q = e.target.value.trim().toLowerCase();
+  searchIndex.forEach(item => {
+    const match = !q || item.name.toLowerCase().includes(q);
+    if(match){
+      if(!item.group.hasLayer(item.layer)) item.group.addLayer(item.layer);
+    } else {
+      if(item.group.hasLayer(item.layer)) item.group.removeLayer(item.layer);
+    }
+  });
+  if(q){
+    const first = searchIndex.find(item => item.name.toLowerCase().includes(q));
+    if(first && first.layer.getBounds){
+      map.fitBounds(first.layer.getBounds(), {maxZoom:10});
+    } else if(first && first.layer.getLatLng){
+      map.setView(first.layer.getLatLng(), 9);
+    }
+  }
+});
+
+/* ======================= Stats & footer ======================= */
+document.getElementById('stat-countries').textContent = DATA.country.features.length;
+document.getElementById('stat-borders').textContent = DATA.borders.features.length;
+document.getElementById('stat-ports').textContent = DATA.ports.features.length;
+document.getElementById('footer-summary').textContent =
+  `${DATA.roads.features.length} road segments · ${DATA.rail.features.length} rail lines · ${DATA.weighbridges.features.length} weighbridges · ${DATA.depots.features.length} pipeline depots · ${DATA.capitals.features.length} capitals`;
+
+document.getElementById('toggle-aside').addEventListener('click', () => {
+  document.getElementById('aside').classList.toggle('open');
+});
+
+/* ======================= Header / Toolbar controls ======================= */
+document.getElementById('reset-view').addEventListener('click', () => {
+  map.setView(INITIAL_CENTER, INITIAL_ZOOM);
+});
+
+document.getElementById('btn-presenter').addEventListener('click', (e) => {
+  const app = document.querySelector('.app');
+  app.classList.toggle('presenter-mode');
+  const on = app.classList.contains('presenter-mode');
+  e.target.textContent = on ? '▦ Exit Presenter' : '▦ Presenter View';
+  setTimeout(() => map.invalidateSize(), 250);
+});
+
+document.getElementById('btn-fullscreen').addEventListener('click', () => {
+  const el = document.documentElement;
+  if (!document.fullscreenElement) {
+    (el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen).call(el);
+  } else {
+    (document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen).call(document);
+  }
+});
+document.addEventListener('fullscreenchange', () => setTimeout(() => map.invalidateSize(), 200));
+
+document.getElementById('btn-export').addEventListener('click', async (e) => {
+  const btn = e.target;
+  const originalText = btn.textContent;
+  btn.textContent = 'Exporting…';
+  btn.disabled = true;
+  try {
+    const canvas = await html2canvas(document.getElementById('map'), {useCORS: true, allowTaint: true});
+    const link = document.createElement('a');
+    link.download = 'nc-infrastructure-atlas.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  } catch (err) {
+    alert('Export failed: ' + err.message);
+  } finally {
+    btn.textContent = originalText;
+    btn.disabled = false;
+  }
+});
+
+} // end initMap
+</script>
+</body>
+</html>
