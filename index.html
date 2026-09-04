@@ -448,7 +448,7 @@ const borderCatShort = {
 };
 const borderGroups = {};
 Object.keys(borderCatColors).forEach(k => borderGroups[k] = L.layerGroup());
-DATA.borders.features.forEach(f => {
+DATA.borders.features.filter(f => f.geometry && f.geometry.coordinates).forEach(f => {
   const cat = f.properties['Category'];
   const color = borderCatColors[cat] || '#999';
   const c = f.geometry.coordinates;
