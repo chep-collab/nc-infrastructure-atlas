@@ -7,12 +7,20 @@ from dotenv import load_dotenv
 load_dotenv()
 
 def get_connection():
+    host = os.getenv("PGHOST", "192.168.48.18")
+    port = os.getenv("PGPORT", "7456")
+    dbname = os.getenv("PGDATABASE", "ncto_staging")
+    user = os.getenv("PGUSER", "postgres")
+    password = os.getenv("PGPASSWORD")
+    if not password:
+        raise SystemExit("PGPASSWORD is not set. Put it in backend/.env")
+    print(f"Connecting to {user}@{host}:{port}/{dbname}")
     return psycopg2.connect(
-        host=os.getenv("DB_HOST"),
-        port=os.getenv("DB_PORT"),
-        dbname=os.getenv("DB_NAME"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD"),
+        host=host,
+        port=port,
+        dbname=dbname,
+        user=user,
+        password=password,
     )
 
 # Each entry: output_key -> (table_name, {property_name_the_map_expects: actual_db_column})
@@ -67,6 +75,10 @@ LAYERS = {
         "COUNTRY": "country",
         "STATUS": "status",
         "TRANSIT_TO": "transit_to",
+    }),
+    "pipeline": ("pipeline_wayleave", {
+        "shape_area": "shape_area",
+        "Length": "length_km_"
     }),
 }
 

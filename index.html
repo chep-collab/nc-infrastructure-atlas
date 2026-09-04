@@ -490,6 +490,47 @@ DATA.weighbridges.features.forEach(f => {
 buildLayerBlock({id:'weighbridges', name:'Weighbridges', swatchClass:'round', color:cssVar('--c-wb'),
   count: DATA.weighbridges.features.length, group: wbLayer});
 
+
+
+// --- Pipelines (Wayleave) ---
+const pipelineGroups = { Operational: L.layerGroup(), Proposed: L.layerGroup() };
+DATA.pipelines.features.forEach(f => {
+  const isOperational = f.properties.STATUS === 'Operational'; // adjust field/value to match your attribute table
+  const color = isOperational ? cssVar('--c-pipe-op') : cssVar('--c-pipe-prop');
+  const layer = L.geoJSON(f, {
+    style: {
+      color: color,
+      weight: 1.5,
+      fillColor: color,
+      fillOpacity: 0.35
+    }
+  }).bindPopup(`<div class="popup"><h3>${f.properties.NAME || 'Pipeline Wayleave'}</h3>
+    <table>
+      <tr><td class="k">Status</td><td>${f.properties.STATUS || '—'}</td></tr>
+      <tr><td class="k">Length (km)</td><td>${f.properties.length_km_ ? Number(f.properties.length_km_).toFixed(2) : '—'}</td></tr>
+      <tr><td class="k">Buffer Dist.</td><td>${f.properties.buff_dist || '—'}</td></tr>
+      <tr><td class="k">Area</td><td>${f.properties.shape_area ? Number(f.properties.shape_area).toFixed(2) : '—'}</td></tr>
+    </table>
+    <span class="badge" style="background:${color}">${f.properties.STATUS || 'Pipeline'}</span></div>`);
+  (isOperational ? pipelineGroups.Operational : pipelineGroups.Proposed).addLayer(layer);
+  searchIndex.push({name: f.properties.NAME || '', layer:layer, group: (isOperational?pipelineGroups.Operational:pipelineGroups.Proposed)});
+});
+const pipelinesMaster = L.layerGroup([pipelineGroups.Operational, pipelineGroups.Proposed]).addTo(map);
+buildLayerBlock({
+  id:'pipelines', name:'Pipeline Wayleave', swatchClass:'round', color:cssVar('--c-pipe-op'),
+  count: DATA.pipelines.features.length, group: pipelinesMaster,
+  subFilters: [
+    {key:'pipe-op', label:'Operational', color:cssVar('--c-pipe-op'), active:true,
+      count: DATA.pipelines.features.filter(f=>f.properties.STATUS==='Operational').length,
+      onToggle:(on)=> on ? map.addLayer(pipelineGroups.Operational) : map.removeLayer(pipelineGroups.Operational)},
+    {key:'pipe-prop', label:'Proposed', color:cssVar('--c-pipe-prop'), active:true,
+      count: DATA.pipelines.features.filter(f=>f.properties.STATUS!=='Operational').length,
+      onToggle:(on)=> on ? map.addLayer(pipelineGroups.Proposed) : map.removeLayer(pipelineGroups.Proposed)}
+  ]
+});
+
+
+
 /* ======================= CAPITALS ======================= */
 addSection('Reference Points');
 const capitalLayer = L.layerGroup();
